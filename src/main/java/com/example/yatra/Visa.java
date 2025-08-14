@@ -8,6 +8,6 @@ public class Visa {
 
     @GetMapping("/visa")
     public String visa() {
-        return "Welcome to the My Visa book ";
+        return "Welcome to the My Visa please book ";
     }
 }
