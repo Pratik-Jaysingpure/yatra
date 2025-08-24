@@ -1,25 +1,22 @@
 pipeline {
     agent any
 
-    environment {
-        JAVA_HOME = "/usr/lib/jvm/java-17-amazon-corretto.x86_64"
-        MAVEN_HOME = "/opt/apache-maven-3.9.11"
-        PATH = "${JAVA_HOME}/bin:${MAVEN_HOME}/bin:${env.PATH}"
+    tools {
+        maven 'MAVEN3'     // Jenkins configure 
+        jdk 'JAVA17'       // Jenkins Java configure 
     }
 
     stages {
         stage('Checkout') {
             steps {
-                git branch: 'holiday', url: 'https://github.com/Pratik-Jaysingpure/yatra.git'
+                git branch: 'holiday',
+                    url: 'https://github.com/Pratik-Jaysingpure/yatra.git'
             }
         }
 
-        stage('Build') {
+        stage('Build with Maven') {
             steps {
-                script {
-                    // Fast build: skip tests
-                    sh "${MAVEN_HOME}/bin/mvn clean package -DskipTests"
-                }
+                sh 'mvn clean package -DskipTests -Dmaven.repo.local=$WORKSPACE/.m2'
             }
         }
 
@@ -28,14 +25,5 @@ pipeline {
                 archiveArtifacts artifacts: 'target/*.jar', fingerprint: true
             }
         }
-    }
-
-    post {
-        success {
-            echo "Build Successful! Artifact archived."
-        }
-        failure {
-            echo "Build Failed!"
-        } 
     }
 }
