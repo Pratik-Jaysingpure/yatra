@@ -8,6 +8,6 @@ public class Holiday {
 
     @GetMapping("/holiday")
     public String holiday() {
-        return " this is fast build check diwali Holiday pratik ";
+        return " using mvn clean pacakge  this is fast build check diwali Holiday pratik ";
     }
 }
