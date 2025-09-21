@@ -17,4 +17,5 @@ pipeline {
                 sh 'mvn clean package'
             }
         }
-
+    } // <-- stages closing brace
+} // <-- pipeline closing brace
