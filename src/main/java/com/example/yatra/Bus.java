@@ -8,6 +8,6 @@ public class Bus {
 
     @GetMapping("/bus")
     public String bus() {
-        return "Welcome to the My bus ";
+        return "Welcome to the My buses  ";
     }
 }
