@@ -1,9 +1,9 @@
 pipeline {
     agent any
 
-  tools {
-      maven "MAVEN-3.8.7"
-  }
+    tools {
+        maven "MAVEN-3.8.7"
+    }
 
     stages {
         stage('Git Checkout') {
@@ -14,8 +14,10 @@ pipeline {
 
         stage('Build') {
             steps {
-                sh 'mvn clean package'
+                ansiColor('xterm') {
+                    sh 'mvn clean package'
+                }
             }
         }
-    } // <-- stages closing brace
-} // <-- pipeline closing brace
+    }
+}
