@@ -7,6 +7,6 @@ import org.springframework.web.bind.annotation.RestController;
 public class cab {
 
     @GetMapping("/cab")
-    public String Cab() { return " Welcome to the My cab service ";
+    public String Cab() { return " hi Welcome to the My cab service ";
     }
 }
