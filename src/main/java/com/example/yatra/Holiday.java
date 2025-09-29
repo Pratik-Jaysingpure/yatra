@@ -8,6 +8,6 @@ public class Holiday {
 
     @GetMapping("/holiday")
     public String holiday() {
-        return "using mvn clean package this is is build check hi pratik add the pool scm check ";
+        return "using mvn pratik jaysingpure clean package this is is build check hi pratik add the pool scm check ";
     }
 }
