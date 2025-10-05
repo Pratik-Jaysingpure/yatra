@@ -10,11 +10,11 @@ pipeline {
         DOCKER_IMAGE = "pratikjaysingpure/${APP_NAME}"
         AWS_REGION   = "ap-south-1"
         ECR_REPO     = "123456789012.dkr.ecr.ap-south-1.amazonaws.com/${APP_NAME}"
-        SONAR_HOST_URL = "http://localhost:9000"
+      /*SONAR_HOST_URL = "http://localhost:9000"
         SONAR_TOKEN = credentials('sonar-token')
         DOCKER_CREDS = credentials('dockerhub-creds')
-        NEXUS_CREDS  = credentials('nexus-creds')
-    }
+        NEXUS_CREDS  = credentials('nexus-creds')*/
+
 
     stages {
 
