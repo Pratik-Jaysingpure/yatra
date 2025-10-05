@@ -6,179 +6,142 @@ pipeline {
     }
 
     environment {
-        APP_NAME     = "yatra-ms-app"
-        DOCKER_IMAGE = "satyam88/${APP_NAME}"
-        AWS_REGION   = "ap-south-1"   // Change to your AWS region
-        ECR_REPO     = "123456789012.dkr.ecr.ap-south-1.amazonaws.com/${APP_NAME}"
+        DOCKER_IMAGE = "pratikjaysingpure/yatra-ms-app-pipeline"
+        AWS_REGION = "ap-south-1"
+        ECR_REPO = "123456789012.dkr.ecr.ap-south-1.amazonaws.com/yatra-ms-app"
+        SONAR_HOST_URL = "http://localhost:9000"
+        SONAR_TOKEN = credentials('sonar-token')
+        DOCKER_CREDS = credentials('dockerhub-creds')
+        NEXUS_CREDS = credentials('nexus-creds')
     }
 
     stages {
-        stage('Git Checkout') {
+
+        stage('Declarative: Checkout SCM') {
             steps {
-                echo "📥 Checking out code from GitHub branch: holiday"
-                git branch: 'holiday', url: 'https://github.com/Pratik-Jaysingpure/yatra.git'
+                echo '📥 Checking out source code...'
+                git branch: 'dev', url: 'https://github.com/Pratik-Jaysingpure/yatra.git'
             }
         }
 
-        stage('Check Tools Version') {
+        stage('Declarative: Tool Install') {
             steps {
-                echo '🔍 Checking versions of Java, Maven and Git...'
+                echo '🔧 Ensuring required tools are installed (Java, Maven, Git)...'
                 sh 'java -version'
-                sh 'mvn --version'
+                sh 'mvn -version'
                 sh 'git --version'
             }
         }
 
-        stage('Build Code') {
+        stage('Checking JAVA, Maven, git') {
             steps {
-                ansiColor('xterm') {
-                    echo "⚙️ Building project with Maven..."
-                    sh 'mvn clean package -DskipTests'
+                echo '✅ Checking environment setup...'
+                sh 'whoami'
+            }
+        }
+
+        stage('Code Compilation') {
+            steps {
+                echo '🧩 Compiling source code...'
+                sh 'mvn clean compile'
+            }
+        }
+
+        stage('Code QA Execution') {
+            steps {
+                echo '🧪 Running unit tests...'
+                sh 'mvn test'
+            }
+        }
+
+        stage('Sonar Code Analysis') {
+            steps {
+                echo '🔍 Running SonarQube Analysis...'
+                withSonarQubeEnv('sonar-server') {
+                    sh "mvn sonar:sonar -Dsonar.projectKey=yatra -Dsonar.host.url=${SONAR_HOST_URL} -Dsonar.login=${SONAR_TOKEN}"
                 }
             }
         }
 
-        stage('Run Unit Tests') {
+        stage('Code Package') {
             steps {
-                ansiColor('xterm') {
-                    echo '🧪 Running unit tests...'
-                    sh 'mvn test'
-                }
+                echo '📦 Packaging code...'
+                sh 'mvn clean package -DskipTests'
             }
         }
 
-        stage('SonarQube Code Analysis') {
-            steps {
-                withSonarQubeEnv('sonarqube-server') {
-                    echo '🔎 Running SonarQube analysis...'
-                    sh 'mvn sonar:sonar'
-                }
-            }
-        }
-
-        stage('Package Artifact') {
-            steps {
-                echo '📦 Packaging application...'
-                sh 'ls -lh target/*.jar || echo "❌ No jar found!"'
-            }
-        }
-
-        stage('Code Deploy (Artifact Upload)') {
-            steps {
-                echo '📤 Uploading artifact to Nexus/Artifactory...'
-                sh 'mvn deploy -DskipTests || echo "Upload skipped (configure Nexus settings.xml)"'
-            }
-        }
-
-        stage('Build & Tag Docker Image') {
+        stage('Building Docker Image') {
             steps {
                 echo '🐳 Building Docker image...'
-                sh "docker build -t ${DOCKER_IMAGE}:${BUILD_NUMBER} ."
+                sh "docker build -t ${DOCKER_IMAGE}:latest ."
             }
         }
 
-        stage('Security Scan (Trivy)') {
+        stage('Tagging Docker Image') {
             steps {
-                echo '🔒 Scanning Docker image for vulnerabilities...'
-                sh "trivy image ${DOCKER_IMAGE}:${BUILD_NUMBER} || true"
+                echo '🏷️ Tagging Docker image...'
+                sh "docker tag ${DOCKER_IMAGE}:latest ${ECR_REPO}:latest"
             }
         }
 
-        stage('Push Docker Image to DockerHub') {
+        stage('Docker Image Scanning') {
             steps {
-                script {
-                    withCredentials([usernamePassword(credentialsId: 'dockerhub-creds', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
-                        sh "echo $DOCKER_PASS | docker login -u $DOCKER_USER --password-stdin"
-                        sh "docker push ${DOCKER_IMAGE}:${BUILD_NUMBER}"
-                    }
-                }
+                echo '🔎 Scanning Docker image for vulnerabilities...'
+                sh "trivy image ${DOCKER_IMAGE}:latest || echo 'Trivy scan skipped if not installed'"
             }
         }
 
-        stage('Push Docker Image to Amazon ECR') {
+        stage('Docker push to Docker Hub') {
             steps {
-                script {
-                    withCredentials([usernamePassword(credentialsId: 'aws-ecr-creds', usernameVariable: 'AWS_ACCESS_KEY_ID', passwordVariable: 'AWS_SECRET_ACCESS_KEY')]) {
-                        sh """
-                          aws configure set aws_access_key_id $AWS_ACCESS_KEY_ID
-                          aws configure set aws_secret_access_key $AWS_SECRET_ACCESS_KEY
-                          aws configure set default.region ${AWS_REGION}
-
-                          aws ecr get-login-password --region ${AWS_REGION} | docker login --username AWS --password-stdin ${ECR_REPO}
-                          docker tag ${DOCKER_IMAGE}:${BUILD_NUMBER} ${ECR_REPO}:${BUILD_NUMBER}
-                          docker push ${ECR_REPO}:${BUILD_NUMBER}
-                        """
-                    }
-                }
-            }
-        }
-
-        stage('Create Helm Chart') {
-            steps {
-                echo '📜 Creating Helm chart for deployment...'
+                echo '☁️ Pushing image to DockerHub...'
                 sh """
-                  mkdir -p helm/${APP_NAME}
-                  helm create helm/${APP_NAME}
-                  # Update values.yaml dynamically (image, tag)
-                  sed -i 's|repository: .*|repository: ${ECR_REPO}|' helm/${APP_NAME}/values.yaml
-                  sed -i 's|tag: .*|tag: ${BUILD_NUMBER}|' helm/${APP_NAME}/values.yaml
+                    echo ${DOCKER_CREDS_PSW} | docker login -u ${DOCKER_CREDS_USR} --password-stdin
+                    docker push ${DOCKER_IMAGE}:latest
                 """
             }
         }
 
-        stage('Deploy to Test Env (Helm)') {
+        stage('Docker Image Push to Amazon ECR') {
             steps {
-                script {
-                    withKubeConfig(credentialsId: 'k8s-cluster-config') {
-                        echo '🚀 Deploying app to Test Kubernetes namespace...'
-                        sh "helm upgrade --install ${APP_NAME}-test helm/${APP_NAME} --namespace test --create-namespace"
-                    }
+                echo '🚀 Pushing Docker image to Amazon ECR...'
+                sh """
+                    aws configure set default.region ${AWS_REGION}
+                    aws ecr get-login-password --region ${AWS_REGION} | docker login --username AWS --password-stdin ${ECR_REPO}
+                    docker push ${ECR_REPO}:latest
+                """
+            }
+        }
+
+        stage('Upload the docker Image to Nexus') {
+            steps {
+                echo '📤 Uploading Docker artifact to Nexus...'
+                sh """
+                    curl -v -u ${NEXUS_CREDS_USR}:${NEXUS_CREDS_PSW} \
+                    --upload-file target/*.jar \
+                    http://localhost:8081/repository/maven-releases/com/yatra/yatra-ms-app/1.0/yatra-ms-app-1.0.jar
+                """
+            }
+        }
+
+        stage('Deploy App to K8s Cluster') {
+            steps {
+                echo '🚢 Deploying to Kubernetes...'
+                withKubeConfig(credentialsId: 'k8s-config') {
+                    sh """
+                        kubectl apply -f k8s/deployment.yaml
+                        kubectl apply -f k8s/service.yaml
+                    """
                 }
-            }
-        }
-
-        stage('Integration Tests') {
-            steps {
-                echo '🔗 Running integration tests on Test environment...'
-                sh 'echo "Run Postman/Newman automated API tests here"'
-            }
-        }
-
-        stage('Approval for Production') {
-            steps {
-                timeout(time: 1, unit: 'HOURS') {
-                    input message: "Deploy ${APP_NAME} to Production?", ok: "Approve"
-                }
-            }
-        }
-
-        stage('Deploy to Production (Helm)') {
-            steps {
-                script {
-                    withKubeConfig(credentialsId: 'k8s-prod-cluster') {
-                        echo '🚀 Deploying application to Production Kubernetes cluster...'
-                        sh "helm upgrade --install ${APP_NAME}-prod helm/${APP_NAME} --namespace prod --create-namespace"
-                    }
-                }
-            }
-        }
-
-        stage('Smoke Tests') {
-            steps {
-                echo '🔥 Running smoke tests to verify Production deployment...'
-                sh 'curl -I http://prod-app-url || true'
             }
         }
     }
 
     post {
         success {
-            echo "✅ Pipeline executed successfully!"
-            slackSend(channel: '#devops-alerts', message: "✅ ${APP_NAME} build ${BUILD_NUMBER} deployed successfully!")
+            echo '🎉 Deployment Successful!'
         }
         failure {
-            echo "❌ Pipeline failed. Please check logs."
-            slackSend(channel: '#devops-alerts', message: "❌ ${APP_NAME} build ${BUILD_NUMBER} failed at stage: ${STAGE_NAME}")
+            echo '❌ Build Failed! Check logs.'
         }
     }
 }
