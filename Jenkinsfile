@@ -14,8 +14,7 @@ pipeline {
         SONAR_TOKEN = credentials('sonar-token')
         DOCKER_CREDS = credentials('dockerhub-creds')
         NEXUS_CREDS  = credentials('nexus-creds')
-
-
+    }
     stages {
 
         /* ------------------------- 1. Checkout & Validation -------------------------- */
