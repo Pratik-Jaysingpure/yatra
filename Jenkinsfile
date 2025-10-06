@@ -5,7 +5,7 @@ pipeline {
         maven "MAVEN-3.8.7"
     }
 
-   /* environment {
+   environment {
         APP_NAME     = "yatra-ms-app"
         DOCKER_IMAGE = "pratikjaysingpure/${APP_NAME}"
         AWS_REGION   = "ap-south-1"
@@ -14,7 +14,7 @@ pipeline {
         SONAR_TOKEN = credentials('sonar-token')
         DOCKER_CREDS = credentials('dockerhub-creds')
         NEXUS_CREDS  = credentials('nexus-creds')
-    }*/
+    }
     stages {
 
         /* ------------------------- 1. Checkout & Validation -------------------------- */
