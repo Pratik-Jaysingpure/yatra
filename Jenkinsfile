@@ -107,20 +107,28 @@ pipeline {
               stage('Upload Artifact to Nexus') {
                   steps {
                       echo '📤 Uploading JAR to Nexus Repository...'
+
+                      // Generate dynamic version using Jenkins build number
+                      script {
+                          env.VERSION = "1.0.${BUILD_NUMBER}"   // You can change format as needed
+                          echo "🔢 Generated dynamic version: ${VERSION}"
+                      }
+
+                      // Securely use credentials
                       withCredentials([usernamePassword(credentialsId: 'nexus-creds', usernameVariable: 'USR', passwordVariable: 'PSW')]) {
-                          sh '''
-                              echo "Uploading artifact to Nexus..."
+                          sh """
+                              echo "Uploading artifact version ${VERSION} to Nexus..."
                               cd target
-                              ls -lh
                               curl -v -u $USR:$PSW \
                               --upload-file yatra-0.0.1-SNAPSHOT.jar \
-                              http://localhost:8081/repository/maven-releases/com/yatra/yatra-ms-app/1.0/yatra-ms-app-1.0.jar
-                          '''
+                              http://localhost:8081/repository/maven-releases/com/yatra/yatra-ms-app/${VERSION}/yatra-ms-app-${VERSION}.jar
+                          """
                       }
                   }
               }
           }
       }
+
 
         /* ------------------------- 5. Docker Build, Tag & Push ------------------------ */
         stage('Docker Build, Tag & Push') {
