@@ -132,35 +132,41 @@ pipeline {
 
         /* ------------------------- 5. Docker Build, Tag & Push ------------------------ */
         stage('Docker Build, Tag & Push') {
-            parallel {
+            stages {
                 stage('Build Docker Image') {
                     steps {
                         echo '🐳 Building Docker image...'
                         sh "docker build -t ${DOCKER_IMAGE}:${BUILD_NUMBER} ."
                     }
                 }
+
                 stage('Tag Docker Image') {
                     steps {
                         echo '🏷️ Tagging Docker image...'
                         sh "docker tag ${DOCKER_IMAGE}:${BUILD_NUMBER} ${ECR_REPO}:${BUILD_NUMBER}"
                     }
                 }
+
                 stage('Docker Image Scanning') {
                     steps {
-                                echo 'Scanning Docker Image with Trivy...'
-                                sh 'trivy image ${DOCKER_IMAGE}:latest || echo "Scan Failed - Proceeding with Caution"'
-                                echo 'Docker Image Scanning Completed!'
+                        echo '🔍 Scanning Docker Image with Trivy...'
+                        sh '''
+                            trivy image --severity HIGH,CRITICAL ${DOCKER_IMAGE}:${BUILD_NUMBER} || echo "⚠️ Scan failed or vulnerabilities found"
+                        '''
+                        echo '✅ Docker Image Scanning Completed!'
                     }
                 }
                 stage('Push Docker Image to DockerHub') {
-                    steps {
-                        echo '☁️ Pushing Docker image to DockerHub...'
-                        sh """
-                            echo ${DOCKER_CREDS_PSW} | docker login -u ${DOCKER_CREDS_USR} --password-stdin
-                            docker push ${DOCKER_IMAGE}:${BUILD_NUMBER}
-                        """
-                    }
-                }
+                            steps {
+                                echo '☁️ Pushing Docker image to DockerHub...'
+                                withCredentials([usernamePassword(credentialsId: 'dockerhub-creds', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
+                                    sh '''
+                                        echo "$DOCKER_PASS" | docker login -u "$DOCKER_USER" --password-stdin
+                                        docker push ${DOCKER_IMAGE}:${BUILD_NUMBER}
+                                    '''
+                                }
+                            }
+
                 stage('Push Docker Image to Amazon ECR') {
                     steps {
                         echo '🚀 Pushing Docker image to Amazon ECR...'
