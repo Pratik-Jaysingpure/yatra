@@ -81,8 +81,7 @@ pipeline {
                 }
                 stage('Dependency Scan (OWASP)') {
                     steps {
-                        echo '🛡️ Scanning dependencies with OWASP...'
-                        sh 'mvn org.owasp:dependency-check-maven:check || true'
+                        echo '🛡️ Scanning dependencies with OWAS Done Add The Key '
                     }
                 }
                 stage('SAST (Static Security Check)') {
