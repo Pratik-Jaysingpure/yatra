@@ -94,26 +94,33 @@ pipeline {
         }
 
         /* ------------------------- 4. Package & Upload ------------------------------- */
-        stage('Package & Upload') {
-            parallel {
-                stage('Package Artifact') {
-                    steps {
-                        echo '📦 Packaging the code into a JAR...'
-                        sh 'mvn clean package -DskipTests'
-                    }
-                }
-                stage('Upload Artifact to Nexus') {
-                    steps {
-                        echo '📤 Uploading JAR to Nexus Repository...'
-                        sh """
-                            curl -v -u ${NEXUS_CREDS_USR}:${NEXUS_CREDS_PSW} \
-                            --upload-file target/*.jar \
-                            http://localhost:8081/repository/maven-releases/com/yatra/${APP_NAME}/1.0/${APP_NAME}-1.0.jar
-                        """
-                    }
-                }
-            }
-        }
+      stage('Package & Upload') {
+          stages {
+              stage('Package Artifact') {
+                  steps {
+                      echo '📦 Packaging the code into a JAR...'
+                      sh 'mvn clean package -DskipTests'
+                      sh 'ls -lh target'
+                  }
+              }
+
+              stage('Upload Artifact to Nexus') {
+                  steps {
+                      echo '📤 Uploading JAR to Nexus Repository...'
+                      withCredentials([usernamePassword(credentialsId: 'nexus-creds', usernameVariable: 'USR', passwordVariable: 'PSW')]) {
+                          sh '''
+                              echo "Uploading artifact to Nexus..."
+                              cd target
+                              ls -lh
+                              curl -v -u $USR:$PSW \
+                              --upload-file yatra-0.0.1-SNAPSHOT.jar \
+                              http://localhost:8081/repository/maven-releases/com/yatra/yatra-ms-app/1.0/yatra-ms-app-1.0.jar
+                          '''
+                      }
+                  }
+              }
+          }
+      }
 
         /* ------------------------- 5. Docker Build, Tag & Push ------------------------ */
         stage('Docker Build, Tag & Push') {
