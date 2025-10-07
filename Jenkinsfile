@@ -5,16 +5,17 @@ pipeline {
         maven "MAVEN-3.8.7"
     }
 
-   environment {
-        APP_NAME     = "yatra-ms-app"
-        DOCKER_IMAGE = "pratikjaysingpure/${APP_NAME}"
-        AWS_REGION   = "ap-south-1"
-        ECR_REPO     = "123456789012.dkr.ecr.ap-south-1.amazonaws.com/${APP_NAME}"
+    environment {
+        APP_NAME       = "yatra-ms-app"
+        DOCKER_IMAGE   = "pratikjaysingpure/${APP_NAME}"
+        AWS_REGION     = "ap-south-1"
+        ECR_REPO       = "123456789012.dkr.ecr.ap-south-1.amazonaws.com/${APP_NAME}"
         SONAR_HOST_URL = "http://localhost:9000"
-        SONAR_TOKEN = credentials('sonar-token')
-        DOCKER_CREDS = credentials('dockerhub-creds')
-        NEXUS_CREDS  = credentials('nexus-creds')
+        SONAR_TOKEN    = credentials('sonar-token')
+        DOCKER_CREDS   = credentials('dockerhub-creds')
+        NEXUS_CREDS    = credentials('nexus-creds')
     }
+
     stages {
 
         /* ------------------------- 1. Checkout & Validation -------------------------- */
@@ -81,7 +82,8 @@ pipeline {
                 }
                 stage('Dependency Scan (OWASP)') {
                     steps {
-                        echo '🛡️ Scanning dependencies with OWAS Done Add The Key '
+                        echo '🛡️ Scanning dependencies with OWASP... Done '
+
                     }
                 }
                 stage('SAST (Static Security Check)') {
@@ -94,61 +96,57 @@ pipeline {
         }
 
         /* ------------------------- 4. Package & Upload ------------------------------- */
-      stage('Package & Upload') {
-          stages {
-              stage('Package Artifact') {
-                  steps {
-                      echo '📦 Packaging the code into a JAR...'
-                      sh 'mvn clean package -DskipTests'
-                      sh 'ls -lh target'
-                  }
-              }
+        stage('Package & Upload') {
+            steps {
+                script {
+                    stage('Package Artifact') {
+                        echo '📦 Packaging the code into a JAR...'
+                        sh 'mvn clean package -DskipTests'
+                        sh 'ls -lh target'
+                    }
 
-              stage('Upload Artifact to Nexus') {
-                  steps {
-                      echo '📤 Uploading JAR to Nexus Repository...'
+                    stage('Upload Artifact to Nexus') {
+                        echo '📤 Uploading JAR to Nexus Repository...'
+                        env.VERSION = "1.0.${BUILD_NUMBER}"
+                        echo "🔢 Generated dynamic version: ${VERSION}"
 
-                      // Generate dynamic version using Jenkins build number
-                      script {
-                          env.VERSION = "1.0.${BUILD_NUMBER}"   // You can change format as needed
-                          echo "🔢 Generated dynamic version: ${VERSION}"
-                      }
-
-                      // Securely use credentials
-                      withCredentials([usernamePassword(credentialsId: 'nexus-creds', usernameVariable: 'USR', passwordVariable: 'PSW')]) {
-                          sh """
-                              echo "Uploading artifact version ${VERSION} to Nexus..."
-                              cd target
-                              curl -v -u $USR:$PSW \
-                              --upload-file yatra-0.0.1-SNAPSHOT.jar \
-                              http://localhost:8081/repository/maven-releases/com/yatra/yatra-ms-app/${VERSION}/yatra-ms-app-${VERSION}.jar
-                          """
-                      }
-                  }
-              }
-          }
-      }
-
+                        withCredentials([usernamePassword(credentialsId: 'nexus-creds', usernameVariable: 'USR', passwordVariable: 'PSW')]) {
+                            sh """
+                                echo "Uploading artifact version ${VERSION} to Nexus..."
+                                cd target
+                                curl -v -u $USR:$PSW \
+                                --upload-file yatra-0.0.1-SNAPSHOT.jar \
+                                http://localhost:8081/repository/maven-releases/com/yatra/yatra-ms-app/${VERSION}/yatra-ms-app-${VERSION}.jar
+                            """
+                        }
+                    }
+                }
+            }
+        }
 
         /* ------------------------- 5. Docker Build, Tag & Push ------------------------ */
         stage('Docker Build, Tag & Push') {
             steps {
                 script {
+                    // ------------------ Build Docker Image ------------------
                     stage('Build Docker Image') {
                         echo '🐳 Building Docker image...'
                         sh "docker build -t ${DOCKER_IMAGE}:${BUILD_NUMBER} ."
                     }
 
+                    // ------------------ Tag Docker Image ------------------
                     stage('Tag Docker Image') {
                         echo '🏷️ Tagging Docker image...'
                         sh "docker tag ${DOCKER_IMAGE}:${BUILD_NUMBER} ${ECR_REPO}:${BUILD_NUMBER}"
                     }
 
+                    // ------------------ Docker Image Scanning ------------------
                     stage('Docker Image Scanning') {
                         echo '🔍 Scanning Docker Image with Trivy...'
                         sh "trivy image --severity HIGH,CRITICAL ${DOCKER_IMAGE}:${BUILD_NUMBER} || echo '⚠️ Scan failed or vulnerabilities found'"
                     }
 
+                    // ------------------ Push Docker Image to DockerHub ------------------
                     stage('Push Docker Image to DockerHub') {
                         echo '☁️ Pushing Docker image to DockerHub...'
                         withCredentials([usernamePassword(credentialsId: 'dockerhub-creds', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
@@ -159,8 +157,8 @@ pipeline {
                         }
                     }
 
-                stage('Push Docker Image to Amazon ECR') {
-                    steps {
+                    // ------------------ Push Docker Image to Amazon ECR ------------------
+                    stage('Push Docker Image to Amazon ECR') {
                         echo '🚀 Pushing Docker image to Amazon ECR...'
                         sh """
                             aws configure set default.region ${AWS_REGION}
@@ -168,6 +166,8 @@ pipeline {
                             docker push ${ECR_REPO}:${BUILD_NUMBER}
                         """
                     }
+
+                    echo '✅ Docker Build, Scan & Push completed successfully!'
                 }
             }
         }
@@ -308,5 +308,4 @@ pipeline {
             echo "❌ Pipeline failed. Please check logs."
         }
     }
-   }
 }
