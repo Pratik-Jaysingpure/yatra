@@ -125,52 +125,66 @@ pipeline {
 
         /* ------------------------- 5. Docker Build, Tag & Push ------------------------ */
         stage('Docker Build, Tag & Push') {
-            steps {
-                script {
+            stages {
 
-                    // ------------------ Build Docker Image ------------------
-                    echo '🐳 Building Docker image...'
-                    sh "docker build -t ${DOCKER_IMAGE}:${BUILD_NUMBER} ."
-
-                    // ------------------ Tag Docker Image ------------------
-                    echo '🏷️ Tagging Docker image...'
-                    sh "docker tag ${DOCKER_IMAGE}:${BUILD_NUMBER} ${ECR_REPO}:${BUILD_NUMBER}"
-
-                    // ------------------ Docker Image Scanning ------------------
-                    echo '🔍 Scanning Docker Image with Trivy...'
-                    sh "trivy image --severity HIGH,CRITICAL ${DOCKER_IMAGE}:${BUILD_NUMBER} || echo '⚠️ Scan failed or vulnerabilities found'"
-
-                    // ------------------ Push Docker Image to DockerHub ------------------
-                    echo '☁️ Pushing Docker image to DockerHub...'
-                    withCredentials([usernamePassword(credentialsId: 'dockerhub-creds', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
-                        sh """
-                            echo "$DOCKER_PASS" | docker login -u "$DOCKER_USER" --password-stdin
-                            docker push ${DOCKER_IMAGE}:${BUILD_NUMBER}
-                        """
+                stage('Build Docker Image') {
+                    steps {
+                        echo '🐳 Building Docker image...'
+                        sh "docker build -t ${DOCKER_IMAGE}:${BUILD_NUMBER} ."
                     }
+                }
 
-                    // ------------------ Push Docker Image to Amazon ECR ------------------
-                    echo '🚀 Pushing Docker image to Amazon ECR...'
-                    def ecrRepo = "690092038612.dkr.ecr.ap-south-1.amazonaws.com/yatra-ms-app"
+                stage('Tag Docker Image') {
+                    steps {
+                        echo '🏷️ Tagging Docker image...'
+                        sh "docker tag ${DOCKER_IMAGE}:${BUILD_NUMBER} ${ECR_REPO}:${BUILD_NUMBER}"
+                    }
+                }
 
-                    sh """
-                        echo '🔧 Setting AWS region...'
-                        aws configure set default.region ap-south-1
+                stage('Docker Image Scanning') {
+                    steps {
+                        echo '🔍 Scanning Docker Image with Trivy...'
+                        sh "trivy image --severity HIGH,CRITICAL ${DOCKER_IMAGE}:${BUILD_NUMBER} || echo '⚠️ Scan failed or vulnerabilities found'"
+                    }
+                }
 
-                        echo '🔐 Logging in to Amazon ECR...'
-                        aws ecr get-login-password --region ap-south-1 | docker login --username AWS --password-stdin ${ecrRepo}
+                stage('Push Docker Image to DockerHub') {
+                    steps {
+                        echo '☁️ Pushing Docker image to DockerHub...'
+                        withCredentials([usernamePassword(credentialsId: 'dockerhub-creds', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
+                            sh """
+                                echo "$DOCKER_PASS" | docker login -u "$DOCKER_USER" --password-stdin
+                                docker push ${DOCKER_IMAGE}:${BUILD_NUMBER}
+                            """
+                        }
+                    }
+                }
 
-                        echo '🏷️ Tagging Docker image for ECR...'
-                        docker tag ${DOCKER_IMAGE}:${BUILD_NUMBER} ${ecrRepo}:${BUILD_NUMBER}
+                stage('Push Docker Image to Amazon ECR') {
+                    steps {
+                        echo '🚀 Pushing Docker image to Amazon ECR...'
+                        script {
+                            def ecrRepo = "690092038612.dkr.ecr.ap-south-1.amazonaws.com/yatra-ms-app"
 
-                        echo '📤 Pushing image to ECR...'
-                        docker push ${ecrRepo}:${BUILD_NUMBER}
-                    """
+                            sh """
+                                echo '🔧 Setting AWS region...'
+                                aws configure set default.region ap-south-1
 
-                    echo "✅ Successfully pushed Docker image to ECR!"
+                                echo '🔐 Logging in to Amazon ECR...'
+                                aws ecr get-login-password --region ap-south-1 | docker login --username AWS --password-stdin ${ecrRepo}
+
+                                echo '🏷️ Tagging Docker image for ECR...'
+                                docker tag ${DOCKER_IMAGE}:${BUILD_NUMBER} ${ecrRepo}:${BUILD_NUMBER}
+
+                                echo '📤 Pushing image to ECR...'
+                                docker push ${ecrRepo}:${BUILD_NUMBER}
+                            """
+                        }
+                    }
                 }
             }
         }
+
 
         /* ------------------------- 6. Integration & Testing --------------------------- */
         stage('Integration Tests') {
