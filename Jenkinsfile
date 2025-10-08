@@ -161,9 +161,15 @@ pipeline {
                     stage('Push Docker Image to Amazon ECR') {
                         echo '🚀 Pushing Docker image to Amazon ECR...'
                         sh """
-                            aws configure set default.region ${AWS_REGION}
-                            aws ecr get-login-password --region ${AWS_REGION} | docker login --username AWS --password-stdin ${ECR_REPO}
-                            docker push ${ECR_REPO}:${BUILD_NUMBER}
+                            echo "🔧 Configuring AWS region..."
+                                        aws configure set default.region ${AWS_REGION}
+
+                                        echo "🔐 Logging into Amazon ECR..."
+                                        aws ecr get-login-password --region ${AWS_REGION} | \
+                                            docker login --username AWS --password-stdin ${ECR_REPO}
+
+                                        echo "📤 Pushing Docker image to ECR..."
+                                        docker push ${ECR_REPO}:${BUILD_NUMBER}
                         """
                     }
 
