@@ -157,23 +157,40 @@ pipeline {
                         }
                     }
 
-                    // ------------------ Push Docker Image to Amazon ECR ------------------
-                    stage('Push Docker Image to Amazon ECR') {
-                        echo '🚀 Pushing Docker image to Amazon ECR...'
-                        sh """
-                            echo "🔧 Configuring AWS region..."
-                                        aws configure set default.region ${AWS_REGION}
+        /* ------------------ Push Docker Image to Amazon ECR ------------------ */
+        stage('Push Docker Image to Amazon ECR') {
+            steps {
+                echo '🚀 Pushing Docker image to Amazon ECR...'
+                script {
+                    // Set repository info
+                    def ecrRepo = "690092038612.dkr.ecr.ap-south-1.amazonaws.com/yatra-ms-app"
 
-                                        echo "🔐 Logging into Amazon ECR..."
-                                        aws ecr get-login-password --region ${AWS_REGION} | \
-                                            docker login --username AWS --password-stdin ${ECR_REPO}
+                    // Configure region
+                    sh """
+                        echo '🔧 Setting AWS region...'
+                        aws configure set default.region ap-south-1
+                    """
 
-                                        echo "📤 Pushing Docker image to ECR..."
-                                        docker push ${ECR_REPO}:${BUILD_NUMBER}
-                        """
-                    }
+                    // Authenticate Docker with ECR
+                    sh """
+                        echo '🔐 Logging in to Amazon ECR...'
+                        aws ecr get-login-password --region ap-south-1 | docker login --username AWS --password-stdin ${ecrRepo}
+                    """
 
-                    echo '✅ Docker Build, Scan & Push completed successfully!'
+                    // Tag image
+                    sh """
+                        echo '🏷️ Tagging Docker image...'
+                        docker tag pratikjaysingpure/yatra-ms-app:${BUILD_NUMBER} ${ecrRepo}:${BUILD_NUMBER}
+                    """
+
+                    // Push image
+                    sh """
+                        echo '📤 Pushing image to ECR repository: ${ecrRepo}'
+                        docker push ${ecrRepo}:${BUILD_NUMBER}
+                    """
+
+                    // Confirmation
+                    echo "✅ Successfully pushed Docker image: ${ecrRepo}:${BUILD_NUMBER}"
                 }
             }
         }
