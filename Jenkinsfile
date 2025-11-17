@@ -229,7 +229,7 @@ pipeline {
                         script {
                             withKubeConfig(credentialsId: 'k8s-cluster-config') {
                                 echo '🚀 Deploying to Test environment...'
-                                sh "helm upgrade --install ${APP_NAME}-test helm/${APP_NAME} --namespace test --create-namespace"
+                               echo ' add the helm and skip  '
                             }
                         }
                     }
