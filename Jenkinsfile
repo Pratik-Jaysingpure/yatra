@@ -250,6 +250,8 @@ pipeline {
             steps {
                 script {
                     withKubeConfig(credentialsId: 'k8s-prod-cluster') {
+                         sh 'kubectl get nodes'
+                         sh 'kubectl get pods -A'
                         echo '🚢 Deploying to Production cluster...'
                         sh "helm upgrade --install ${APP_NAME}-prod helm/${APP_NAME} --namespace prod --create-namespace"
                     }
