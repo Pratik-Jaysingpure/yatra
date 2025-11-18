@@ -227,12 +227,9 @@ pipeline {
                 stage('Deploy to Test Environment') {
                     steps {
                         script {
-                            sh """
-                                        export KUBECONFIG=/var/lib/jenkins/.kube/config
-                                        kubectl get nodes
-                                        kubectl get pods -A
-                                        echo '🚀 Deploying to Test environment...'
-                                        """
+                            withKubeConfig(credentialsId: 'k8s-cluster-config') {
+                                echo '🚀 Deploying to Test environment...'
+                               echo ' add the helm and skip  '
                             }
                         }
                     }
@@ -327,5 +324,5 @@ pipeline {
             echo "❌ Pipeline failed. Please check logs."
         }
     }
-
+}
 
