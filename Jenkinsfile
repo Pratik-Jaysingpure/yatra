@@ -227,12 +227,12 @@ pipeline {
                 stage('Deploy to Test Environment') {
                     steps {
                         script {
-                            writeFile file: 'kubeconfig', text: """
-                <your kubeconfig content here>
-                """
-                            withEnv(["KUBECONFIG=${WORKSPACE}/kubeconfig"]) {
-                                sh 'kubectl get nodes'
-                                sh 'kubectl get pods -A'
+                            sh """
+                                        export KUBECONFIG=/var/lib/jenkins/.kube/config
+                                        kubectl get nodes
+                                        kubectl get pods -A
+                                        echo '🚀 Deploying to Test environment...'
+                                        """
                             }
                         }
                     }
