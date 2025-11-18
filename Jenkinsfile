@@ -227,9 +227,12 @@ pipeline {
                 stage('Deploy to Test Environment') {
                     steps {
                         script {
-                            withKubeConfig(credentialsId: 'k8s-cluster-config') {
-                                echo '🚀 Deploying to Test environment...'
-                               echo ' add the helm and skip  '
+                            writeFile file: 'kubeconfig', text: """
+                <your kubeconfig content here>
+                """
+                            withEnv(["KUBECONFIG=${WORKSPACE}/kubeconfig"]) {
+                                sh 'kubectl get nodes'
+                                sh 'kubectl get pods -A'
                             }
                         }
                     }
