@@ -1,0 +1,16 @@
+name: Trigger Jenkins Job
+
+on:
+  push:
+    branches:
+      - holiday   # when holiday branch push
+
+jobs:
+  trigger-jenkins:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger Jenkins Job via API
+        run: |
+          curl -X POST \
+            -u "${{ secrets.JENKINS_USER }}:${{ secrets.JENKINS_TOKEN }}" \
+            "${{ secrets.JENKINS_URL }}/job/yatra-mb-slave/job/holiday/build?token=mytrig"
