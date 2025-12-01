@@ -8,6 +8,9 @@ public class Holiday {
 
     @GetMapping("/holiday")
     public String holiday() {
-        return "sumit fdsfsdfdsfdsfdfsdfffsdfdfdfdf  " ;
+
+
+        return "pratik" ;
+
     }
 }
