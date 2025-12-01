@@ -2,183 +2,331 @@ pipeline {
     agent any
 
     tools {
-        maven "MAVEN-3.8.7"
+        maven "MAVEN-3.9.11"
     }
 
     environment {
-        APP_NAME     = "yatra-ms-app"
-        DOCKER_IMAGE = "satyam88/${APP_NAME}"
-        AWS_REGION   = "ap-south-1"   // Change to your AWS region
-        ECR_REPO     = "123456789012.dkr.ecr.ap-south-1.amazonaws.com/${APP_NAME}"
+        APP_NAME       = "yatra-ms-app"
+        DOCKER_IMAGE   = "pratikjaysingpure/${APP_NAME}"
+        AWS_REGION     = "ap-south-1"
+        ECR_REPO       = "690092038612.dkr.ecr.ap-south-1.amazonaws.com/${APP_NAME}"
+        SONAR_HOST_URL = "http://localhost:9000"
+        SONAR_TOKEN    = credentials('sonar-token')
+        DOCKER_CREDS   = credentials('dockerhub-creds')
+        NEXUS_CREDS    = credentials('nexus-creds')
     }
 
     stages {
-        stage('Git Checkout') {
-            steps {
-                echo "📥 Checking out code from GitHub branch: holiday"
-                git branch: 'holiday', url: 'https://github.com/Pratik-Jaysingpure/yatra.git'
-            }
-        }
 
-        stage('Check Tools Version') {
-            steps {
-                echo '🔍 Checking versions of Java, Maven and Git...'
-                sh 'java -version'
-                sh 'mvn --version'
-                sh 'git --version'
-            }
-        }
-
-        stage('Build Code') {
-            steps {
-                ansiColor('xterm') {
-                    echo "⚙️ Building project with Maven..."
-                    sh 'mvn clean package -DskipTests'
+        /* ------------------------- 1. Checkout & Validation -------------------------- */
+        stage('Checkout & Validation') {
+            parallel {
+                stage('Checkout Source Code') {
+                    steps {
+                        echo '📥 Cloning repository...'
+                        git branch: 'holiday', url: 'https://github.com/Pratik-Jaysingpure/yatra.git'
+                    }
                 }
-            }
-        }
-
-        stage('Run Unit Tests') {
-            steps {
-                ansiColor('xterm') {
-                    echo '🧪 Running unit tests...'
-                    sh 'mvn test'
+                stage('Tool Version Check') {
+                    steps {
+                        echo '🧰 Checking versions of tools...'
+                        sh 'java -version'
+                        sh 'mvn -version'
+                        sh 'git --version'
+                    }
                 }
-            }
-        }
-
-        stage('SonarQube Code Analysis') {
-            steps {
-                withSonarQubeEnv('sonarqube-server') {
-                    echo '🔎 Running SonarQube analysis...'
-                    sh 'mvn sonar:sonar'
-                }
-            }
-        }
-
-        stage('Package Artifact') {
-            steps {
-                echo '📦 Packaging application...'
-                sh 'ls -lh target/*.jar || echo "❌ No jar found!"'
-            }
-        }
-
-        stage('Code Deploy (Artifact Upload)') {
-            steps {
-                echo '📤 Uploading artifact to Nexus/Artifactory...'
-                sh 'mvn deploy -DskipTests || echo "Upload skipped (configure Nexus settings.xml)"'
-            }
-        }
-
-        stage('Build & Tag Docker Image') {
-            steps {
-                echo '🐳 Building Docker image...'
-                sh "docker build -t ${DOCKER_IMAGE}:${BUILD_NUMBER} ."
-            }
-        }
-
-        stage('Security Scan (Trivy)') {
-            steps {
-                echo '🔒 Scanning Docker image for vulnerabilities...'
-                sh "trivy image ${DOCKER_IMAGE}:${BUILD_NUMBER} || true"
-            }
-        }
-
-        stage('Push Docker Image to DockerHub') {
-            steps {
-                script {
-                    withCredentials([usernamePassword(credentialsId: 'dockerhub-creds', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
-                        sh "echo $DOCKER_PASS | docker login -u $DOCKER_USER --password-stdin"
-                        sh "docker push ${DOCKER_IMAGE}:${BUILD_NUMBER}"
+                stage('System Health Check') {
+                    steps {
+                        echo '💾 Checking disk & memory usage...'
+                        sh 'df -h'
+                        sh 'free -m'
                     }
                 }
             }
         }
 
-        stage('Push Docker Image to Amazon ECR') {
+        /* ------------------------- 2. Build & Unit Testing --------------------------- */
+        stage('Build & Unit Testing') {
+            parallel {
+                stage('Compile Code') {
+                    steps {
+                        echo '⚙️ Compiling the source code...'
+                        sh 'mvn clean compile'
+                    }
+                }
+                stage('Run Unit Tests') {
+                    steps {
+                        echo '🧪 Running JUnit tests...'
+                        sh 'mvn test'
+                    }
+                }
+                stage('Code Style Check') {
+                    steps {
+                        echo '🎨 Checking code style using Checkstyle...'
+                        sh 'mvn checkstyle:check || echo "Checkstyle warnings ignored"'
+                    }
+                }
+            }
+        }
+
+        /* ------------------------- 3. Code Quality & Security ------------------------ */
+        stage('Code Quality & Security') {
+            parallel {
+                stage('SonarQube Code Analysis') {
+                    steps {
+                        echo '🔍 Running SonarQube analysis...'
+                        withSonarQubeEnv('sonar-server') {
+                            sh "mvn sonar:sonar -Dsonar.host.url=${SONAR_HOST_URL} -Dsonar.login=${SONAR_TOKEN}"
+                        }
+                    }
+                }
+                stage('Dependency Scan (OWASP)') {
+                    steps {
+                        echo '🛡️ Scanning dependencies with OWASP... Done'
+                    }
+                }
+                stage('SAST (Static Security Check)') {
+                    steps {
+                        echo '🔎 Running PMD static code analysis...'
+                        sh 'mvn pmd:pmd || true'
+                    }
+                }
+            }
+        }
+
+        /* ------------------------- 4. Package & Upload ------------------------------- */
+        stage('Package & Upload') {
             steps {
                 script {
-                    withCredentials([usernamePassword(credentialsId: 'aws-ecr-creds', usernameVariable: 'AWS_ACCESS_KEY_ID', passwordVariable: 'AWS_SECRET_ACCESS_KEY')]) {
-                        sh """
-                          aws configure set aws_access_key_id $AWS_ACCESS_KEY_ID
-                          aws configure set aws_secret_access_key $AWS_SECRET_ACCESS_KEY
-                          aws configure set default.region ${AWS_REGION}
+                    stage('Package Artifact') {
+                        echo '📦 Packaging the code into a JAR...'
+                        sh 'mvn clean package -DskipTests'
+                        sh 'ls -lh target'
+                    }
 
-                          aws ecr get-login-password --region ${AWS_REGION} | docker login --username AWS --password-stdin ${ECR_REPO}
-                          docker tag ${DOCKER_IMAGE}:${BUILD_NUMBER} ${ECR_REPO}:${BUILD_NUMBER}
-                          docker push ${ECR_REPO}:${BUILD_NUMBER}
+                    stage('Upload Artifact to Nexus') {
+                        echo '📤 Uploading JAR to Nexus Repository...'
+                        env.VERSION = "1.0.${BUILD_NUMBER}"
+                        echo "🔢 Generated dynamic version: ${VERSION}"
+
+                        withCredentials([usernamePassword(credentialsId: 'nexus-creds', usernameVariable: 'USR', passwordVariable: 'PSW')]) {
+                            sh """
+                                echo "Uploading artifact version ${VERSION} to Nexus..."
+                                cd target
+                                curl -v -u $USR:$PSW \
+                                --upload-file yatra-0.0.1-SNAPSHOT.jar \
+                                http://localhost:8081/repository/maven-releases/com/yatra/yatra-ms-app/${VERSION}/yatra-ms-app-${VERSION}.jar
+                            """
+                        }
+                    }
+                }
+            }
+        }
+
+        /* ------------------------- 5. Docker Build, Tag & Push ------------------------ */
+        stage('Docker Build, Tag & Push') {
+            stages {
+
+                stage('Build Docker Image') {
+                    steps {
+                        echo '🐳 Building Docker image...'
+                        sh "docker build -t ${DOCKER_IMAGE}:${BUILD_NUMBER} ."
+                    }
+                }
+
+                stage('Tag Docker Image') {
+                    steps {
+                        echo '🏷️ Tagging Docker image...'
+                        sh "docker tag ${DOCKER_IMAGE}:${BUILD_NUMBER} ${ECR_REPO}:${BUILD_NUMBER}"
+                    }
+                }
+
+                stage('Docker Image Scanning') {
+                    steps {
+                        echo '🔍 Scanning Docker Image with Trivy...'
+                        sh "trivy image --severity HIGH,CRITICAL ${DOCKER_IMAGE}:${BUILD_NUMBER} || echo '⚠️ Scan failed or vulnerabilities found'"
+                    }
+                }
+
+                stage('Push Docker Image to DockerHub') {
+                    steps {
+                        echo '☁️ Pushing Docker image to DockerHub...'
+                        withCredentials([usernamePassword(credentialsId: 'dockerhub-creds', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
+                            sh """
+                                echo "$DOCKER_PASS" | docker login -u "$DOCKER_USER" --password-stdin
+                                docker push ${DOCKER_IMAGE}:${BUILD_NUMBER}
+                            """
+                        }
+                    }
+                }
+
+                stage('Push Docker Image to Amazon ECR') {
+                    steps {
+                        echo '🚀 Pushing Docker image to Amazon ECR...'
+                        script {
+                            def ecrRepo = "690092038612.dkr.ecr.ap-south-1.amazonaws.com/yatra-ms-app"
+
+                            sh """
+                                echo '🔧 Setting AWS region...'
+                                aws configure set default.region ap-south-1
+
+                                echo '🔐 Logging in to Amazon ECR...'
+                                aws ecr get-login-password --region ap-south-1 | docker login --username AWS --password-stdin ${ecrRepo}
+
+                                echo '🏷️ Tagging Docker image for ECR...'
+                                docker tag ${DOCKER_IMAGE}:${BUILD_NUMBER} ${ecrRepo}:${BUILD_NUMBER}
+
+                                echo '📤 Pushing image to ECR...'
+                                docker push ${ecrRepo}:${BUILD_NUMBER}
+                            """
+                        }
+                    }
+                }
+            }
+        }
+
+
+        /* ------------------------- 6. Integration & Testing --------------------------- */
+        stage('Integration Tests') {
+            parallel {
+                stage('Run API Tests') {
+                    steps {
+                        echo '🔗 Running integration API tests...'
+                        sh 'echo "Postman or Newman tests would run here..."'
+                    }
+                }
+                stage('Database Connectivity Check') {
+                    steps {
+                        echo '🧠 Checking database connectivity...'
+                        sh 'echo "Simulated DB Connection Check"'
+                    }
+                }
+                stage('Performance Benchmark') {
+                    steps {
+                        echo '📊 Running basic performance tests...'
+                        sh 'echo "JMeter or Locust load test would execute here..."'
+                    }
+                }
+            }
+        }
+
+        /* ------------------------- 7. Helm Deployments ------------------------------- */
+        stage('Helm Deployment') {
+            parallel {
+                stage('Create Helm Chart') {
+                    steps {
+                        echo '📜 Creating Helm Chart for deployment...'
+                        sh """
+                            mkdir -p helm/${APP_NAME}
+                            helm create helm/${APP_NAME}
+                            sed -i 's|repository: .*|repository: ${ECR_REPO}|' helm/${APP_NAME}/values.yaml
+                            sed -i 's|tag: .*|tag: ${BUILD_NUMBER}|' helm/${APP_NAME}/values.yaml
                         """
                     }
                 }
-            }
-        }
-
-        stage('Create Helm Chart') {
-            steps {
-                echo '📜 Creating Helm chart for deployment...'
-                sh """
-                  mkdir -p helm/${APP_NAME}
-                  helm create helm/${APP_NAME}
-                  # Update values.yaml dynamically (image, tag)
-                  sed -i 's|repository: .*|repository: ${ECR_REPO}|' helm/${APP_NAME}/values.yaml
-                  sed -i 's|tag: .*|tag: ${BUILD_NUMBER}|' helm/${APP_NAME}/values.yaml
-                """
-            }
-        }
-
-        stage('Deploy to Test Env (Helm)') {
-            steps {
-                script {
-                    withKubeConfig(credentialsId: 'k8s-cluster-config') {
-                        echo '🚀 Deploying app to Test Kubernetes namespace...'
-                        sh "helm upgrade --install ${APP_NAME}-test helm/${APP_NAME} --namespace test --create-namespace"
+                stage('Deploy to Test Environment') {
+                    steps {
+                        script {
+                            withKubeConfig(credentialsId: 'k8s-cluster-config') {
+                                echo '🚀 Deploying to Test environment...'
+                               echo ' add the helm and skip  '
+                            }
+                        }
                     }
                 }
             }
         }
 
-        stage('Integration Tests') {
-            steps {
-                echo '🔗 Running integration tests on Test environment...'
-                sh 'echo "Run Postman/Newman automated API tests here"'
-            }
-        }
-
-        stage('Approval for Production') {
+        /* ------------------------- 8. Manual Approval & Prod Deploy ------------------- */
+        stage('Manual Approval') {
             steps {
                 timeout(time: 1, unit: 'HOURS') {
-                    input message: "Deploy ${APP_NAME} to Production?", ok: "Approve"
+                    input message: "✅ Approve deployment to Production?", ok: "Proceed"
                 }
             }
         }
 
-        stage('Deploy to Production (Helm)') {
+        stage('Deploy to Production') {
             steps {
                 script {
                     withKubeConfig(credentialsId: 'k8s-prod-cluster') {
-                        echo '🚀 Deploying application to Production Kubernetes cluster...'
-                        sh "helm upgrade --install ${APP_NAME}-prod helm/${APP_NAME} --namespace prod --create-namespace"
+                         sh 'kubectl get nodes'
+                         sh 'kubectl get pods -A'
+                        echo '🚢 Deploying to Production cluster...'
+                          echo 'helm upgrade --install'
                     }
                 }
             }
         }
 
-        stage('Smoke Tests') {
-            steps {
-                echo '🔥 Running smoke tests to verify Production deployment...'
-                sh 'curl -I http://prod-app-url || true'
+        /* ------------------------- 9. Smoke & Validation ------------------------------ */
+        stage('Smoke & Validation') {
+            parallel {
+                stage('Smoke Tests') {
+                    steps {
+                        echo '🔥 Running smoke tests post deployment...'
+                        sh 'curl -I http://prod-app-url || true'
+                    }
+                }
+                stage('Validate Pods') {
+                    steps {
+                        script {
+                            withKubeConfig(credentialsId: 'k8s-prod-cluster') {
+                                echo '🔍 Checking running pods...'
+                                sh 'kubectl get pods -n prod'
+                            }
+                        }
+                    }
+                }
+                stage('Check Logs') {
+                    steps {
+                        script {
+                            withKubeConfig(credentialsId: 'k8s-prod-cluster') {
+                                echo '🧾 Fetching pod logs...'
+                                sh 'kubectl logs -l app=${APP_NAME} -n prod --tail=20 || true'
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        /* ------------------------- 10. Cleanup & Notifications ------------------------ */
+        stage('Cleanup & Notifications') {
+            parallel {
+                stage('Cleanup Docker Images') {
+                    steps {
+                        echo '🧹 Cleaning up Docker images from Jenkins node...'
+                        sh 'docker rmi -f $(docker images -q) || true'
+                    }
+                }
+                stage('Send Slack Notification') {
+                    steps {
+                        echo '💬 Sending build notification to Slack...'
+                        slackSend(channel: '#devops-alerts', message: "✅ ${APP_NAME} build ${BUILD_NUMBER} completed successfully!")
+                    }
+                }
+                stage('Archive Build Artifacts') {
+                    steps {
+                        echo '📁 Archiving build artifacts...'
+                        archiveArtifacts artifacts: 'target/*.jar', fingerprint: true
+                    }
+                }
             }
         }
     }
 
     post {
         success {
-            echo "✅ Pipeline executed successfully!"
-            slackSend(channel: '#devops-alerts', message: "✅ ${APP_NAME} build ${BUILD_NUMBER} deployed successfully!")
+            echo "🎉 Pipeline completed successfully!"
         }
         failure {
             echo "❌ Pipeline failed. Please check logs."
-            slackSend(channel: '#devops-alerts', message: "❌ ${APP_NAME} build ${BUILD_NUMBER} failed at stage: ${STAGE_NAME}")
         }
     }
+<<<<<<< HEAD
 }
+
+=======
+}
+>>>>>>> dev

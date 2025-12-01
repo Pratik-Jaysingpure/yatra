@@ -8,6 +8,6 @@ public class Hotel {
 
     @GetMapping("/hotel")
     public String hotel() {
-        return "Welcome to the Hotel pratik ";
+        return "Welcome to the Hotel this pratik ";
     }
 }
